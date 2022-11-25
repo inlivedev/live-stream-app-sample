@@ -1,5 +1,5 @@
 let options = {
-  origin: 'https://api.inlive.app',
+  origin: 'https://dev-api.inlive.app',
   apiVersion: 'v1',
   // dynamic API Key based on input
   apiKey: '',

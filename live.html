@@ -19,7 +19,7 @@
       // get the id parameter from the url link for the manifestUri
       let params = new URL(document.location).searchParams;
       let streamId = params.get('id');
-      const manifestUri = `https://bifrost.inlive.app/streams/${streamId}/manifest.mpd`;
+      const manifestUri = `https://dev-bifrost.inlive.app/streams/${streamId}/manifest.mpd`;
 
       function initApp() {
         shaka.polyfill.installAll();
