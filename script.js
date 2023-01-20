@@ -203,18 +203,29 @@ async function startStream() {
     const peerConnection = new RTCPeerConnection(servers);
     console.log('peerConnection', peerConnection);
 
-    peerConnection.oniceconnectionstatechange = () => {
-      const iceConnectionState = peerConnection.iceConnectionState;
-      console.log('iceConnectionState', iceConnectionState);
-    };
+    const eventKey = await getEventKey(createdStreamData?.data?.id);
+    console.log(`Got Event Key ${eventKey}`)
 
-    peerConnection.onicecandidate = async (event) => {
-      if (event.candidate === null) {
-        await initStream(createdStreamData?.data?.id, peerConnection, options);
-        await startStreaming(createdStreamData?.data?.id);
+    subscribeEvents(createdStreamData?.data?.id, peerConnection, eventKey);
+
+    // waiting the WebRTC connection state change to connected before we start the live stream
+    peerConnection.addEventListener('connectionstatechange', (event) => {
+      if (peerConnection.connectionState === 'connected') {
+        startStreaming(createdStreamData?.data?.id)
       }
-    };
+    })
 
+    // waiting for the local ice candidate event and send it to the server if not null
+    peerConnection.addEventListener('icecandidate', async (event) => {
+      if (event.candidate !== null) {
+        if(event.candidate.candidate==='') {
+          return
+        }
+        sendIceCandidate(createdStreamData?.data?.id, event.candidate.toJSON())
+      }
+    })
+
+    // we use stream from the webcam that we captured from previous step
     localStream.getTracks().forEach((track) => {
       peerConnection.addTrack(track, localStream);
     });
@@ -271,3 +282,47 @@ async function endStream(slug) {
     throw err;
   }
 }
+
+async function getEventKey(id) {
+  const url = `${options.origin}/${options.apiVersion}/streams/${id}/eventkey`
+  const body = {
+    expiry_seconds : 36000
+  }
+  try {
+    const resp = await apiRequest(options.apiKey, url, 'POST',body)
+    if (resp.code !== 200) {
+      throw new Error('Failed to prepare stream session')
+    }
+
+    return resp.data
+  } catch (err) {
+    console.error(err)
+  }
+}
+
+async function subscribeEvents(id, peerConnection, eventKey) {
+  const url = `${options.origin}/${options.apiVersion}/streams/${id}/events/${eventKey}`
+  const evtSource = new EventSource(url, {
+    withCredentials: true,
+  });
+
+
+  // we're waiting the iceCandidate event from the server and add the remote ice-candidate to our RTCPeerConnection
+  evtSource.addEventListener('iceCandidate', (event) => {
+    peerConnection.addIceCandidate(event.data)
+  })
+}
+
+async function sendIceCandidate(streamId, iceCandidate) {
+  const url = `${options.origin}/${options.apiVersion}/streams/${streamId}/ice`
+  try {
+    const resp = await apiRequest(options.apiKey, url, 'POST', iceCandidate)
+    if (resp.code !== 200) {
+      throw new Error('Failed to post ice candidate')
+    }
+
+    return true
+  } catch (err) {
+    console.error(err)
+  }
+}   
